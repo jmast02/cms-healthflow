@@ -11,6 +11,9 @@ help:
 	@echo "    make down            Stop and remove containers"
 	@echo "    make logs            Tail all container logs"
 	@echo ""
+	@echo "  Dashboard"
+	@echo "    make dashboard       Open Streamlit at http://localhost:8501"
+	@echo ""
 	@echo "  Data Ingestion"
 	@echo "    make download        Download CMS datasets to data/raw/"
 	@echo "    make ingest          Upload raw files to MinIO"
@@ -39,9 +42,12 @@ help:
 	@echo "────────────────────────────────────────────────────────"
 
 # ── Infrastructure ────────────────────────────────────────────────────────
-# Core stack (postgres, minio, airflow, api, prometheus, grafana)
+# Core stack (postgres, minio, airflow, api, streamlit, prometheus, grafana)
 up:
 	docker compose up -d
+
+dashboard:
+	open http://localhost:8501
 
 # Optional: start Spark cluster (only needed when submitting to a remote cluster)
 # Spark jobs default to local[*] mode and don't need this for local dev.

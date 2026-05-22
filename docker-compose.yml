@@ -74,6 +74,21 @@ services:
       - .:/app
     working_dir: /app
 
+  # ── Streamlit Dashboard ──────────────────────────────────────────────────
+  streamlit:
+    build:
+      context: .
+      dockerfile: Dockerfile.streamlit
+    container_name: cms_streamlit
+    ports:
+      - "8501:8501"
+    environment:
+      API_BASE_URL: http://api:8000
+    depends_on:
+      - api
+    volumes:
+      - ./streamlit:/app/streamlit   # live reload on code changes
+
   # ── Prometheus ───────────────────────────────────────────────────────────
   prometheus:
     image: prom/prometheus:latest
@@ -105,7 +120,9 @@ services:
 
   # ── Airflow (Orchestration) ──────────────────────────────────────────────
   airflow:
-    image: apache/airflow:2.9.0
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
     container_name: cms_airflow
     command: standalone
     environment:
@@ -123,13 +140,16 @@ services:
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin
+      PYTHONPATH: /opt/airflow/project
+      CMS_DATA_DIR: /opt/airflow/project/data/raw
+      CMS_PARQUET_DIR: /opt/airflow/project/data/parquet
+      CMS_PROVIDER_DATASET_YEAR: "2022"
     ports:
       - "8090:8080"
     volumes:
       - ./airflow/dags:/opt/airflow/dags
-      - ./ingestion:/opt/airflow/ingestion
-      - ./spark:/opt/airflow/spark
-      - ./data:/opt/airflow/data
+      - .:/opt/airflow/project          # full project available to DAG imports
+      - ./data:/opt/airflow/project/data
       - airflow_logs:/opt/airflow/logs
     depends_on:
       postgres:

@@ -96,7 +96,9 @@ class TestNormalizeJob:
         from pyspark.sql import functions as F
         from spark.utils.schema import normalize_column_names, cast_numeric_columns
 
-        df = spark.createDataFrame(raw_provider_rows)
+        # Inject a null-NPI row to verify the filter works
+        rows_with_null = raw_provider_rows + [{**raw_provider_rows[0], "Rndrng_Prvdr_NPI": None}]
+        df = spark.createDataFrame(rows_with_null)
         df = normalize_column_names(df)
         df = cast_numeric_columns(df)
 
@@ -130,7 +132,8 @@ class TestAggregateJob:
         df = df.filter(F.col("provider_npi").isNotNull()).withColumn("dataset_year", F.lit(2022).cast("short"))
 
         profiles = build_provider_profiles(df)
-        assert profiles.count() == 2  # two valid NPIs
+        # conftest has 3 unique valid NPIs — one row each
+        assert profiles.count() == len({r["Rndrng_Prvdr_NPI"] for r in raw_provider_rows if r.get("Rndrng_Prvdr_NPI")})
 
     def test_procedure_costs_computed(self, spark, raw_provider_rows):
         from pyspark.sql import functions as F

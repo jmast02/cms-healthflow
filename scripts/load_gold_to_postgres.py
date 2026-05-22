@@ -24,7 +24,7 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-PARQUET_DIR = Path("data/parquet")
+PARQUET_DIR = Path(os.getenv("CMS_PARQUET_DIR", "data/parquet"))
 YEAR = int(os.getenv("CMS_PROVIDER_DATASET_YEAR", 2022))
 
 JDBC_URL = (

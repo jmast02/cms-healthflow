@@ -4,6 +4,20 @@
 
 ---
 
+## Dashboard
+
+The Streamlit dashboard at **http://localhost:8501** provides 5 views:
+
+| Page | What it shows |
+|---|---|
+| 🏠 Overview | Live KPIs, national choropleth, specialty bar chart |
+| 🔍 Provider Explorer | Search/filter 50k+ providers, payment distribution chart, NPI drill-down |
+| 💊 Procedure Costs | HCPCS lookup, state comparison bar chart, cost choropleth map |
+| 📊 Specialty Analytics | Payment vs volume scatter, top specialties, national spending |
+| 🗺️ Geographic Analysis | State heatmap + ZIP-code histogram drill-down |
+
+---
+
 ## Architecture
 
 ```
@@ -110,14 +124,14 @@ make up
 ```
 
 Services started:
-| Service | URL |
-|---|---|
-| FastAPI docs | http://localhost:8000/docs |
-| Spark Master UI | http://localhost:8080 |
-| MinIO console | http://localhost:9001 (minioadmin / minioadmin) |
-| Airflow | http://localhost:8090 |
-| Grafana | http://localhost:3000 (admin / admin) |
-| Prometheus | http://localhost:9090 |
+| Service | URL | Credentials |
+|---|---|---|
+| **Streamlit Dashboard** | http://localhost:8501 | — |
+| FastAPI docs | http://localhost:8000/docs | — |
+| Airflow | http://localhost:8090 | admin / admin |
+| MinIO console | http://localhost:9001 | minioadmin / minioadmin |
+| Grafana | http://localhost:3000 | admin / admin |
+| Prometheus | http://localhost:9090 | — |
 
 ### 3. Download CMS data
 

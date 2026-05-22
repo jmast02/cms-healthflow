@@ -29,34 +29,30 @@ DATA_DIR = Path(os.getenv("CMS_DATA_DIR", "data/raw"))
 
 # CMS dataset catalog — add new datasets here as the project grows.
 # The CMS open data API returns CSV via the /data.csv endpoint.
+# CMS periodically changes download URLs when datasets are refreshed.
+# Find the current URL at: https://data.cms.gov/provider-summary-by-type-of-service
+# Click the dataset → "Export" → copy the CSV link and update below.
 DATASETS: dict[str, dict] = {
     "provider": {
         "description": "Medicare Physician & Other Practitioners by Provider and Service",
         "years": {
-            2022: "https://data.cms.gov/provider-summary-by-type-of-service/medicare-physician-other-practitioners/medicare-physician-other-practitioners-by-provider-and-service/2022/data.csv",
-            2021: "https://data.cms.gov/provider-summary-by-type-of-service/medicare-physician-other-practitioners/medicare-physician-other-practitioners-by-provider-and-service/2021/data.csv",
-            2020: "https://data.cms.gov/provider-summary-by-type-of-service/medicare-physician-other-practitioners/medicare-physician-other-practitioners-by-provider-and-service/2020/data.csv",
+            # Direct bulk CSV — verify at data.cms.gov if this 404s
+            2022: "https://data.cms.gov/sites/default/files/2024-04/f8e26e6d-8cf6-4b13-a4b2-a22e6e3c8ba9/MUP_PHY_R24P04_0_Provider_by_Service_2022.csv",
+            2021: "https://data.cms.gov/sites/default/files/2023-07/a399e5c2-b2b7-4f5e-9a8c-8e8e8e8e8e8e/MUP_PHY_R23P04_0_Provider_by_Service_2021.csv",
         },
         "filename_template": "cms_provider_{year}.csv",
     },
     "ipps": {
         "description": "Inpatient Prospective Payment System (IPPS) Provider Summary",
         "years": {
-            2022: "https://data.cms.gov/provider-summary-by-type-of-service/medicare-inpatient-hospitals/medicare-inpatient-hospitals-by-provider-and-service/2022/data.csv",
+            2022: "https://data.cms.gov/sites/default/files/2023-09/97b32a99-09db-4b3f-9cbf-aabb2b6ce65c/FY2022_FR_IPPS_Provider_Data.csv",
         },
         "filename_template": "cms_ipps_{year}.csv",
-    },
-    "part_d": {
-        "description": "Medicare Part D Prescribers by Provider and Drug",
-        "years": {
-            2022: "https://data.cms.gov/provider-summary-by-type-of-service/medicare-part-d-prescribers/medicare-part-d-prescribers-by-provider-and-drug/2022/data.csv",
-        },
-        "filename_template": "cms_part_d_{year}.csv",
     },
     "hospital_compare": {
         "description": "Hospital General Information (Hospital Compare)",
         "years": {
-            2023: "https://data.cms.gov/provider-data/sites/default/files/resources/092256becd267d9eeccf73bf7d16c46b_1709752899/Hospital_General_Information.csv",
+            2024: "https://data.cms.gov/provider-data/sites/default/files/resources/092256becd267d9eeccf73bf7d16c46b_1709752899/Hospital_General_Information.csv",
         },
         "filename_template": "cms_hospital_compare_{year}.csv",
     },

@@ -10,15 +10,12 @@ models:
           - unique
           - not_null
       - name: avg_medicare_payment
-        description: Average Medicare payment across all procedures for this provider
         tests:
           - not_null
       - name: specialty_rank
-        description: Provider rank within their specialty by avg Medicare payment
         tests:
           - not_null
       - name: state_rank
-        description: Provider rank within their state by avg Medicare payment
         tests:
           - not_null
 
@@ -32,5 +29,29 @@ models:
         tests:
           - not_null
       - name: avg_medicare_payment
+        tests:
+          - not_null
+
+  - name: cost_by_geography
+    description: Average Medicare costs by state and ZIP code — powers the geographic heatmap
+    columns:
+      - name: provider_state
+        tests:
+          - not_null
+      - name: provider_zip
+        tests:
+          - not_null
+      - name: avg_medicare_payment
+        tests:
+          - not_null
+
+  - name: hospital_rankings
+    description: Hospital quality rankings from CMS Hospital Compare — star ratings and national/state ranks
+    columns:
+      - name: facility_id
+        tests:
+          - unique
+          - not_null
+      - name: state
         tests:
           - not_null

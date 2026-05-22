@@ -19,9 +19,8 @@ from pyspark.sql.types import (
 # Maps every known CMS column variant to the canonical internal name.
 # Add new entries here when a new dataset year ships with different names.
 COLUMN_MAPPING: dict[str, str] = {
-    # Provider identity
+    # Provider identity — "NPI" is an older column alias; map it separately
     "Rndrng_Prvdr_NPI":              "provider_npi",
-    "NPI":                           "provider_npi",
     "Rndrng_Prvdr_Last_Org_Name":    "provider_name",
     "Rndrng_Prvdr_First_Name":       "provider_first_name",
     "Rndrng_Prvdr_Crdntls":          "provider_credentials",

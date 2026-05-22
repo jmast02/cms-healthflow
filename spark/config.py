@@ -15,10 +15,10 @@ class SparkConfig:
     driver_memory: str = os.getenv("SPARK_DRIVER_MEMORY", "4g")
     executor_memory: str = os.getenv("SPARK_EXECUTOR_MEMORY", "2g")
 
-    # Paths
+    # Paths — override via env vars so Airflow and Docker can point to absolute paths
     raw_data_dir: str = os.getenv("CMS_DATA_DIR", "data/raw")
-    parquet_dir: str = "data/parquet"
-    delta_dir: str = "data/delta"
+    parquet_dir: str  = os.getenv("CMS_PARQUET_DIR", "data/parquet")
+    delta_dir: str    = os.getenv("CMS_DELTA_DIR", "data/delta")
 
     # MinIO / S3
     minio_endpoint: str = os.getenv("MINIO_ENDPOINT", "localhost:9000")

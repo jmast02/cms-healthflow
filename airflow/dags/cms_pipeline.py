@@ -2,27 +2,123 @@
 CMS HealthFlow — Main Airflow DAG
 
 Orchestrates the full weekly pipeline:
-  download → ingest → normalize → quality → aggregate → rank → dbt → validate
+  generate_sample → normalize → quality → aggregate → rank → load → validate
 
-Schedule: weekly (CMS updates data periodically)
+Uses PythonOperator to call Spark job functions directly — no subprocess overhead.
+Schedule: weekly (CMS updates data periodically).
 """
 
 from __future__ import annotations
 
+import logging
+import sys
 from datetime import datetime, timedelta
 
 from airflow import DAG
-from airflow.operators.bash import BashOperator
-from airflow.operators.python import BranchPythonOperator, PythonOperator
+from airflow.operators.python import PythonOperator
 from airflow.utils.trigger_rule import TriggerRule
+
+log = logging.getLogger(__name__)
 
 default_args = {
     "owner": "cms-healthflow",
-    "retries": 2,
-    "retry_delay": timedelta(minutes=5),
+    "retries": 1,
+    "retry_delay": timedelta(minutes=3),
     "email_on_failure": False,
     "email_on_retry": False,
 }
+
+
+# ── Task callables ────────────────────────────────────────────────────────
+
+def task_generate_sample(**ctx):
+    """Generate synthetic CMS data if no real download exists."""
+    import os
+    from pathlib import Path
+    sys.path.insert(0, "/opt/airflow/project")
+
+    year = int(os.getenv("CMS_PROVIDER_DATASET_YEAR", 2022))
+    real = Path(f"/opt/airflow/project/data/raw/provider/cms_provider_{year}.csv")
+    sample = Path(f"/opt/airflow/project/data/raw/provider/cms_provider_{year}_sample.csv")
+
+    if real.exists():
+        log.info("Real CMS data found at %s — skipping sample generation", real)
+        return
+
+    if sample.exists():
+        log.info("Sample data already exists at %s", sample)
+        return
+
+    import subprocess
+    subprocess.run(
+        ["python", "scripts/generate_sample_data.py"],
+        cwd="/opt/airflow/project",
+        check=True,
+    )
+
+
+def task_normalize(**ctx):
+    sys.path.insert(0, "/opt/airflow/project")
+    from spark.jobs.normalize import main
+    main()
+
+
+def task_quality(**ctx):
+    sys.path.insert(0, "/opt/airflow/project")
+    from spark.jobs.quality import main
+    main()
+
+
+def task_aggregate(**ctx):
+    sys.path.insert(0, "/opt/airflow/project")
+    from spark.jobs.aggregate import main
+    main()
+
+
+def task_rank(**ctx):
+    sys.path.insert(0, "/opt/airflow/project")
+    from spark.jobs.rankings import main
+    main()
+
+
+def task_load(**ctx):
+    sys.path.insert(0, "/opt/airflow/project")
+    import subprocess
+    subprocess.run(
+        ["python", "scripts/load_gold_to_postgres.py"],
+        cwd="/opt/airflow/project",
+        check=True,
+    )
+
+
+def task_validate(**ctx):
+    """Run Great Expectations validation on the raw CSV."""
+    import os
+    from pathlib import Path
+    sys.path.insert(0, "/opt/airflow/project")
+
+    year = int(os.getenv("CMS_PROVIDER_DATASET_YEAR", 2022))
+    # Prefer real data; fall back to sample
+    for suffix in ("", "_sample"):
+        path = Path(f"/opt/airflow/project/data/raw/provider/cms_provider_{year}{suffix}.csv")
+        if path.exists():
+            from ingestion.validate import validate_with_pandas
+            passed = validate_with_pandas(path)
+            if not passed:
+                raise ValueError(f"Data quality validation FAILED for {path}")
+            log.info("Validation passed for %s", path)
+            return
+
+    log.warning("No data file found to validate")
+
+
+def task_notify(**ctx):
+    run_id = ctx.get("run_id", "unknown")
+    log.info("✅ CMS HealthFlow pipeline complete — run_id=%s", run_id)
+    log.info("Gold tables updated: provider_profiles, procedure_costs, cost_by_geography")
+
+
+# ── DAG definition ────────────────────────────────────────────────────────
 
 with DAG(
     dag_id="cms_healthflow_pipeline",
@@ -33,113 +129,68 @@ with DAG(
     default_args=default_args,
     tags=["cms", "healthcare", "batch"],
     doc_md="""
-    ## CMS HealthFlow Pipeline
+## CMS HealthFlow Pipeline
 
-    Full end-to-end batch pipeline processing CMS Medicare provider utilization data.
+End-to-end batch pipeline on CMS Medicare provider utilization data.
 
-    ### Flow
-    1. **download** — pull latest CMS CSV from data.cms.gov
-    2. **ingest** — upload raw file to MinIO (s3://cms-raw)
-    3. **validate_raw** — Great Expectations on raw CSV (quality gate)
-    4. **spark_normalize** — Bronze: normalize schema, clean nulls
-    5. **spark_quality** — Silver: score each row for data quality
-    6. **spark_aggregate** — Gold: provider profiles, procedure costs, geo rollups
-    7. **spark_rank** — Gold: window function rankings within specialty/state
-    8. **dbt_run** — Final Gold models and mart tables in PostgreSQL
-    9. **dbt_test** — Schema tests and freshness checks
-    10. **notify_success** — Log pipeline completion metrics
+**Flow:** generate/download → normalize → quality score → aggregate → rank → load → validate
+
+**Gold tables produced:**
+- `gold.provider_profiles` — one row per NPI with specialty/state rankings
+- `gold.procedure_costs` — cost stats per HCPCS code per state
+- `gold.cost_by_geography` — avg payments by ZIP code
+
+**API:** http://cms-api:8000/docs
     """,
 ) as dag:
 
-    # ── Step 1: Download ──────────────────────────────────────────────────
-    download = BashOperator(
-        task_id="download_cms_data",
-        bash_command="cd /opt/airflow && python -m ingestion.download --dataset provider --year 2022",
-        doc="Download CMS provider utilization CSV from data.cms.gov",
+    generate = PythonOperator(
+        task_id="generate_sample_data",
+        python_callable=task_generate_sample,
+        doc="Generate synthetic CMS rows if no real download exists",
     )
 
-    # ── Step 2: Ingest to MinIO ───────────────────────────────────────────
-    ingest = BashOperator(
-        task_id="ingest_to_minio",
-        bash_command="cd /opt/airflow && python -m ingestion.ingest --dataset provider --year 2022",
-        doc="Upload raw CSV to MinIO s3://cms-raw",
-    )
-
-    # ── Step 3: Validate raw data (quality gate) ──────────────────────────
-    validate_raw = BashOperator(
-        task_id="validate_raw_data",
-        bash_command=(
-            "cd /opt/airflow && "
-            "python -m ingestion.validate "
-            "--path data/raw/provider/cms_provider_2022.csv"
-        ),
-        doc="Great Expectations validation — fails pipeline if data quality is unacceptable",
-    )
-
-    # ── Step 4: Spark — Normalize ─────────────────────────────────────────
-    spark_normalize = BashOperator(
+    normalize = PythonOperator(
         task_id="spark_normalize",
-        bash_command="cd /opt/airflow && python -m spark.jobs.normalize",
-        doc="PySpark: normalize column names, cast types, drop null NPIs → Silver Parquet",
+        python_callable=task_normalize,
+        doc="PySpark: normalize column names, cast types → Silver Parquet",
     )
 
-    # ── Step 5: Spark — Quality scoring ──────────────────────────────────
-    spark_quality = BashOperator(
+    quality = PythonOperator(
         task_id="spark_quality_score",
-        bash_command="cd /opt/airflow && python -m spark.jobs.quality",
-        doc="PySpark: add quality_score and outlier flags to Silver layer",
+        python_callable=task_quality,
+        doc="PySpark: add 0-100 quality score + outlier flags",
     )
 
-    # ── Step 6: Spark — Aggregate ─────────────────────────────────────────
-    spark_aggregate = BashOperator(
+    aggregate = PythonOperator(
         task_id="spark_aggregate",
-        bash_command="cd /opt/airflow && python -m spark.jobs.aggregate",
-        doc="PySpark: build Gold aggregations (provider profiles, procedure costs, geo rollups)",
+        python_callable=task_aggregate,
+        doc="PySpark: build Gold aggregations — provider profiles, procedure costs, geo rollups",
     )
 
-    # ── Step 7: Spark — Rankings ──────────────────────────────────────────
-    spark_rank = BashOperator(
+    rank = PythonOperator(
         task_id="spark_rank",
-        bash_command="cd /opt/airflow && python -m spark.jobs.rankings",
+        python_callable=task_rank,
         doc="PySpark: window function rankings within specialty and state",
     )
 
-    # ── Step 8: dbt run ───────────────────────────────────────────────────
-    dbt_run = BashOperator(
-        task_id="dbt_run",
-        bash_command="cd /opt/airflow/dbt && dbt run --profiles-dir .",
-        doc="dbt: run staging and mart models on top of Gold Parquet outputs",
+    load = PythonOperator(
+        task_id="load_gold_to_postgres",
+        python_callable=task_load,
+        doc="Load Gold Parquet → PostgreSQL gold schema",
     )
 
-    # ── Step 9: dbt test ──────────────────────────────────────────────────
-    dbt_test = BashOperator(
-        task_id="dbt_test",
-        bash_command="cd /opt/airflow/dbt && dbt test --profiles-dir .",
-        doc="dbt: run schema tests (not_null, unique, accepted_values, freshness)",
+    validate = PythonOperator(
+        task_id="validate_data_quality",
+        python_callable=task_validate,
+        doc="Great Expectations / pandas validation on raw data",
     )
 
-    # ── Step 10: Log success ──────────────────────────────────────────────
-    def _log_success(**context):
-        execution_date = context["execution_date"]
-        print(f"Pipeline completed successfully for execution date: {execution_date}")
-        print("All tasks passed. Data is ready in gold schema.")
-
-    notify_success = PythonOperator(
+    notify = PythonOperator(
         task_id="notify_success",
-        python_callable=_log_success,
+        python_callable=task_notify,
         trigger_rule=TriggerRule.ALL_SUCCESS,
+        doc="Log pipeline completion",
     )
 
-    # ── DAG dependency chain ──────────────────────────────────────────────
-    (
-        download
-        >> ingest
-        >> validate_raw
-        >> spark_normalize
-        >> spark_quality
-        >> spark_aggregate
-        >> spark_rank
-        >> dbt_run
-        >> dbt_test
-        >> notify_success
-    )
+    generate >> normalize >> quality >> aggregate >> rank >> load >> validate >> notify

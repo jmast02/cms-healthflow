@@ -63,11 +63,25 @@ app.include_router(analytics.router, prefix="/api/v1")
 async def health_check():
     """Pipeline health and data freshness status."""
     db_ok = check_connection()
+    total_providers = None
+
+    if db_ok:
+        try:
+            from sqlalchemy import text
+            from api.db import engine
+            with engine.connect() as conn:
+                result = conn.execute(
+                    text("SELECT COUNT(*) FROM gold.provider_profiles")
+                )
+                total_providers = result.scalar()
+        except Exception:
+            pass  # gold schema not yet populated — that's fine
+
     return {
         "status": "ok" if db_ok else "degraded",
         "database": "connected" if db_ok else "unavailable",
         "dataset_year": int(os.getenv("CMS_PROVIDER_DATASET_YEAR", 2022)),
-        "total_providers": None,
+        "total_providers": total_providers,
     }
 
 
