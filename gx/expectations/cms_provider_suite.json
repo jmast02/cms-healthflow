@@ -1,0 +1,73 @@
+{
+  "expectation_suite_name": "cms_provider_suite",
+  "expectations": [
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": { "column": "Rndrng_Prvdr_NPI" },
+      "meta": { "notes": "NPI is the primary identifier — records without it are unusable" }
+    },
+    {
+      "expectation_type": "expect_column_values_to_match_regex",
+      "kwargs": { "column": "Rndrng_Prvdr_NPI", "regex": "^\\d{10}$" },
+      "meta": { "notes": "NPIs are always exactly 10 digits" }
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": { "column": "HCPCS_Cd" },
+      "meta": { "notes": "Procedure code required for all billing records" }
+    },
+    {
+      "expectation_type": "expect_column_values_to_match_regex",
+      "kwargs": { "column": "HCPCS_Cd", "regex": "^[A-Z0-9]\\d{4}$" },
+      "meta": { "notes": "HCPCS: letter or digit followed by 4 digits" }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_between",
+      "kwargs": {
+        "column": "Avg_Mdcr_Pymt_Amt",
+        "min_value": 0,
+        "max_value": 1000000
+      },
+      "meta": { "notes": "Average Medicare payment must be non-negative and below $1M" }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_between",
+      "kwargs": { "column": "Tot_Srvcs", "min_value": 1 },
+      "meta": { "notes": "Every billing record must have at least one service" }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_in_set",
+      "kwargs": {
+        "column": "Rndrng_Prvdr_State_Abrvtn",
+        "value_set": [
+          "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN",
+          "IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV",
+          "NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN",
+          "TX","UT","VT","VA","WA","WV","WI","WY","DC","PR","VI","GU","AS","MP","ZZ"
+        ]
+      },
+      "meta": { "notes": "State must be a recognised US state/territory abbreviation" }
+    },
+    {
+      "expectation_type": "expect_column_to_exist",
+      "kwargs": { "column": "Rndrng_Prvdr_NPI" }
+    },
+    {
+      "expectation_type": "expect_column_to_exist",
+      "kwargs": { "column": "HCPCS_Cd" }
+    },
+    {
+      "expectation_type": "expect_column_to_exist",
+      "kwargs": { "column": "Avg_Mdcr_Pymt_Amt" }
+    },
+    {
+      "expectation_type": "expect_table_row_count_to_be_between",
+      "kwargs": { "min_value": 100000 },
+      "meta": { "notes": "Full CMS dataset always has millions of rows; a tiny file signals a bad download" }
+    }
+  ],
+  "meta": {
+    "great_expectations_version": "0.18.16",
+    "description": "Expectation suite for raw CMS Medicare Physician/Supplier data"
+  }
+}

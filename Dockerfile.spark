@@ -1,0 +1,27 @@
+FROM python:3.11-slim
+
+# PySpark requires a JVM.
+# default-jre-headless resolves to the correct JDK for the build platform
+# (arm64 or amd64) and /usr/lib/jvm/default-java is a stable symlink.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    default-jre-headless \
+    gcc \
+    libpq-dev \
+    curl \
+    procps \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV JAVA_HOME=/usr/lib/jvm/default-java
+ENV PYSPARK_PYTHON=python3
+ENV PYTHONUNBUFFERED=1
+
+# PostgreSQL JDBC driver — required for Spark → PostgreSQL writes
+RUN curl -fsSL https://jdbc.postgresql.org/download/postgresql-42.7.3.jar \
+    -o /opt/postgresql-jdbc.jar
+
+WORKDIR /app
+
+COPY requirements/spark.txt requirements/spark.txt
+RUN pip install --no-cache-dir -r requirements/spark.txt
+
+COPY . .

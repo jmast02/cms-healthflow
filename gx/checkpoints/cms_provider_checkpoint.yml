@@ -1,0 +1,21 @@
+name: cms_provider_checkpoint
+config_version: 1.0
+class_name: SimpleCheckpoint
+run_name_template: "%Y%m%d-%H%M%S-cms-provider"
+
+validations:
+  - batch_request:
+      datasource_name: cms_raw_csv
+      data_connector_name: csv_connector
+      data_asset_name: provider/cms_provider_2022
+    expectation_suite_name: cms_provider_suite
+
+action_list:
+  - name: store_validation_result
+    action:
+      class_name: StoreValidationResultAction
+  - name: update_data_docs
+    action:
+      class_name: UpdateDataDocsAction
+      site_names:
+        - local_site

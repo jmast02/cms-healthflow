@@ -1,0 +1,36 @@
+version: 2
+
+models:
+  - name: provider_profiles
+    description: One row per provider NPI with aggregated payment metrics and specialty/state rankings
+    columns:
+      - name: provider_npi
+        description: National Provider Identifier — unique key
+        tests:
+          - unique
+          - not_null
+      - name: avg_medicare_payment
+        description: Average Medicare payment across all procedures for this provider
+        tests:
+          - not_null
+      - name: specialty_rank
+        description: Provider rank within their specialty by avg Medicare payment
+        tests:
+          - not_null
+      - name: state_rank
+        description: Provider rank within their state by avg Medicare payment
+        tests:
+          - not_null
+
+  - name: procedure_costs
+    description: Per-procedure cost analytics by state — avg, median, min, max payments
+    columns:
+      - name: hcpcs_code
+        tests:
+          - not_null
+      - name: provider_state
+        tests:
+          - not_null
+      - name: avg_medicare_payment
+        tests:
+          - not_null

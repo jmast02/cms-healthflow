@@ -1,0 +1,55 @@
+# Environment
+.env
+*.env
+
+# Data files (too large for git)
+data/raw/
+data/parquet/
+data/delta/
+*.csv
+*.parquet
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+venv/
+.venv/
+env/
+
+# Testing
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Docker
+.docker/
+
+# dbt
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+
+# Great Expectations
+gx/uncommitted/
+
+# Airflow
+airflow/logs/
+airflow/plugins/
+
+# OS
+.DS_Store
+Thumbs.db

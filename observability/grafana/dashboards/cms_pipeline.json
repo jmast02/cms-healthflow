@@ -1,0 +1,198 @@
+{
+  "__inputs": [],
+  "__requires": [
+    { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "10.0.0" },
+    { "type": "datasource", "id": "prometheus", "name": "Prometheus", "version": "1.0.0" }
+  ],
+  "annotations": { "list": [] },
+  "description": "CMS HealthFlow pipeline monitoring — API performance and pipeline health",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "API Request Rate (req/s)",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "rate(http_requests_total{job=\"cms-api\"}[5m])",
+          "legendFormat": "req/s"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "area"
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "P99 Latency (ms)",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{job=\"cms-api\"}[5m])) * 1000",
+          "legendFormat": "P99 ms"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "thresholds": {
+          "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 200 },
+            { "color": "red", "value": 500 }
+          ]
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Provider Searches",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "increase(cms_provider_searches_total[1h])",
+          "legendFormat": "last 1h"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background"
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Procedure Cost Lookups",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "increase(cms_procedure_cost_lookups_total[1h])",
+          "legendFormat": "last 1h"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background"
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "API Request Rate by Endpoint",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "rate(http_requests_total{job=\"cms-api\"}[5m])",
+          "legendFormat": "{{handler}} {{method}}"
+        }
+      ],
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" } }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Latency Percentiles",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "histogram_quantile(0.50, rate(http_request_duration_seconds_bucket{job=\"cms-api\"}[5m])) * 1000",
+          "legendFormat": "P50"
+        },
+        {
+          "datasource": "Prometheus",
+          "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job=\"cms-api\"}[5m])) * 1000",
+          "legendFormat": "P95"
+        },
+        {
+          "datasource": "Prometheus",
+          "expr": "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{job=\"cms-api\"}[5m])) * 1000",
+          "legendFormat": "P99"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "ms" }
+      }
+    },
+    {
+      "id": 7,
+      "type": "bargauge",
+      "title": "Pipeline Rows Processed (last run)",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 12 },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "cms_pipeline_rows_processed_total",
+          "legendFormat": "{{job_name}}"
+        }
+      ],
+      "options": {
+        "orientation": "horizontal",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      }
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "HTTP 5xx Error Rate",
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 12 },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "rate(http_requests_total{job=\"cms-api\",status=~\"5..\"}[5m])",
+          "legendFormat": "5xx/s"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "thresholds": {
+          "steps": [
+            { "color": "green", "value": null },
+            { "color": "red", "value": 0.01 }
+          ]
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "stat",
+      "title": "Pipeline Last Run Success",
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 12 },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "min(cms_pipeline_last_run_success)",
+          "legendFormat": "success"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "mappings": [
+          { "type": "value", "options": { "0": { "text": "FAILED", "color": "red" }, "1": { "text": "OK", "color": "green" } } }
+        ]
+      }
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "tags": ["cms", "healthcare", "pipeline"],
+  "title": "CMS HealthFlow — Pipeline & API",
+  "uid": "cms-healthflow-main",
+  "version": 1
+}

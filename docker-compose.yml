@@ -1,0 +1,252 @@
+services:
+  # ── PostgreSQL (Data Warehouse) ──────────────────────────────────────────
+  postgres:
+    image: postgres:15
+    container_name: cms_postgres
+    environment:
+      POSTGRES_DB: cms_healthflow
+      POSTGRES_USER: healthflow
+      POSTGRES_PASSWORD: healthflow_secret
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./sql:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U healthflow -d cms_healthflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── MinIO (Local S3 — Raw Data Lake) ────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: cms_minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── MinIO bucket init ────────────────────────────────────────────────────
+  minio-init:
+    image: minio/mc:latest
+    container_name: cms_minio_init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9000 minioadmin minioadmin;
+        mc mb --ignore-existing local/cms-raw;
+        mc mb --ignore-existing local/cms-parquet;
+        exit 0;
+      "
+
+  # ── FastAPI (Analytics API) ──────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cms_api
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: cms_healthflow
+      POSTGRES_USER: healthflow
+      POSTGRES_PASSWORD: healthflow_secret
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - .:/app
+    working_dir: /app
+
+  # ── Prometheus ───────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: cms_prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=15d'
+
+  # ── Grafana ──────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:latest
+    container_name: cms_grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards
+    depends_on:
+      - prometheus
+
+  # ── Airflow (Orchestration) ──────────────────────────────────────────────
+  airflow:
+    image: apache/airflow:2.9.0
+    container_name: cms_airflow
+    command: standalone
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://healthflow:healthflow_secret@postgres/cms_healthflow
+      AIRFLOW__CORE__FERNET_KEY: ''
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth'
+      AIRFLOW__WEBSERVER__SECRET_KEY: 'cms-healthflow-secret'
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: cms_healthflow
+      POSTGRES_USER: healthflow
+      POSTGRES_PASSWORD: healthflow_secret
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    ports:
+      - "8090:8080"
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./ingestion:/opt/airflow/ingestion
+      - ./spark:/opt/airflow/spark
+      - ./data:/opt/airflow/data
+      - airflow_logs:/opt/airflow/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ════════════════════════════════════════════════════════════════════════
+  # Spark pipeline jobs — run with: docker compose run --rm <service>
+  # These share a single image built from Dockerfile.spark (Python + Java).
+  # They are NOT started by `docker compose up` (no profiles match default).
+  # ════════════════════════════════════════════════════════════════════════
+  spark-base: &spark-base
+    build:
+      context: .
+      dockerfile: Dockerfile.spark
+    environment:
+      SPARK_MASTER: "local[*]"
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: cms_healthflow
+      POSTGRES_USER: healthflow
+      POSTGRES_PASSWORD: healthflow_secret
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      CMS_DATA_DIR: /app/data/raw
+      PYTHONPATH: /app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    volumes:
+      - .:/app            # mount full project so code changes apply without rebuild
+      - ./data:/app/data  # explicit data mount ensures host data/ is always used
+    working_dir: /app
+    profiles:
+      - jobs
+
+  # Generate synthetic sample data (no real download needed)
+  generate-sample:
+    <<: *spark-base
+    container_name: cms_generate_sample
+    command: python scripts/generate_sample_data.py --rows 50000
+
+  # Normalize raw CSV → Silver Parquet
+  spark-normalize:
+    <<: *spark-base
+    container_name: cms_spark_normalize
+    command: python -m spark.jobs.normalize
+
+  # Quality score each Silver row (0-100)
+  spark-quality:
+    <<: *spark-base
+    container_name: cms_spark_quality
+    command: python -m spark.jobs.quality
+
+  # Aggregate Silver → Gold (provider profiles, procedure costs, geo)
+  spark-aggregate:
+    <<: *spark-base
+    container_name: cms_spark_aggregate
+    command: python -m spark.jobs.aggregate
+
+  # Window function rankings within specialty and state
+  spark-rank:
+    <<: *spark-base
+    container_name: cms_spark_rank
+    command: python -m spark.jobs.rankings
+
+  # Load Gold Parquet into PostgreSQL gold schema
+  spark-load:
+    <<: *spark-base
+    container_name: cms_spark_load
+    command: python scripts/load_gold_to_postgres.py
+
+  # Hospital Compare processing
+  spark-hospitals:
+    <<: *spark-base
+    container_name: cms_spark_hospitals
+    command: python -m spark.jobs.hospitals
+
+  # ── Optional: Spark cluster (arm64-compatible apache/spark image) ────────
+  spark-master:
+    image: apache/spark:latest
+    container_name: cms_spark_master
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+    user: root
+    environment:
+      SPARK_MASTER_HOST: spark-master
+      SPARK_MASTER_PORT: "7077"
+      SPARK_MASTER_WEBUI_PORT: "8080"
+      SPARK_NO_DAEMONIZE: "true"
+    ports:
+      - "8080:8080"
+      - "7077:7077"
+    volumes:
+      - ./data:/opt/spark/work/data
+    profiles:
+      - spark
+
+  spark-worker:
+    image: apache/spark:latest
+    container_name: cms_spark_worker
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
+    user: root
+    environment:
+      SPARK_WORKER_MEMORY: 2g
+      SPARK_WORKER_CORES: "2"
+      SPARK_NO_DAEMONIZE: "true"
+    volumes:
+      - ./data:/opt/spark/work/data
+    depends_on:
+      - spark-master
+    profiles:
+      - spark
+
+volumes:
+  postgres_data:
+  minio_data:
+  grafana_data:
+  airflow_logs:

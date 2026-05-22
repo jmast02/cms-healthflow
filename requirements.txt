@@ -1,0 +1,3 @@
+# Root requirements — used by the API container (Dockerfile).
+# See requirements/spark.txt for Spark job dependencies (Dockerfile.spark).
+-r requirements/api.txt

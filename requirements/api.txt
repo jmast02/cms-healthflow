@@ -1,0 +1,17 @@
+# FastAPI container dependencies only — no PySpark, no Airflow
+python-dotenv==1.0.1
+requests==2.31.0
+
+# Database
+psycopg2-binary==2.9.9
+sqlalchemy==2.0.31
+
+# API
+fastapi==0.111.1
+uvicorn[standard]==0.30.1
+pydantic==2.7.4
+pydantic-settings==2.3.4
+
+# Observability
+prometheus-fastapi-instrumentator==7.0.0
+prometheus-client==0.20.0
