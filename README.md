@@ -1,20 +1,20 @@
 # CMS HealthFlow
 
-**End-to-end healthcare claims analytics pipeline** processing 15M+ Medicare provider records from CMS public data using PySpark, dbt, Great Expectations, and FastAPI.
+**End-to-end healthcare claims analytics pipeline** processing 15M+ Medicare provider records from CMS public data using PySpark, dbt, Great Expectations, FastAPI, and an interactive Streamlit dashboard.
 
 ---
 
 ## Dashboard
 
-The Streamlit dashboard at **http://localhost:8501** provides 5 views:
+The Streamlit dashboard at **http://localhost:8501** provides 5 interactive views:
 
 | Page | What it shows |
 |---|---|
-| 🏠 Overview | Live KPIs, national choropleth, specialty bar chart |
-| 🔍 Provider Explorer | Search/filter 50k+ providers, payment distribution chart, NPI drill-down |
-| 💊 Procedure Costs | HCPCS lookup, state comparison bar chart, cost choropleth map |
-| 📊 Specialty Analytics | Payment vs volume scatter, top specialties, national spending |
-| 🗺️ Geographic Analysis | State heatmap + ZIP-code histogram drill-down |
+| 🏠 **Overview** | Live KPIs, national choropleth map, top specialties bar chart |
+| 🔍 **Provider Explorer** | Search/filter 50k+ providers by state, specialty, ZIP, payment range — NPI drill-down |
+| 💊 **Procedure Costs** | HCPCS code lookup, state-by-state bar chart, cost choropleth map |
+| 📊 **Specialty Analytics** | Payment vs volume scatter, top specialties, national Medicare spending |
+| 🗺️ **Geographic Analysis** | State-level heatmap + ZIP-code histogram drill-down |
 
 ---
 
@@ -35,8 +35,9 @@ CMS Open Data Portal (data.cms.gov)
 │                                             │
 │  normalize.py  →  quality.py               │
 │  aggregate.py  →  rankings.py              │
+│  hospitals.py                              │
 │                                             │
-│  Bronze → Silver → Gold (Parquet/Delta)    │
+│  Bronze → Silver → Gold (Parquet)          │
 └────────────┬────────────────────────────────┘
              │
              ▼
@@ -56,20 +57,23 @@ CMS Open Data Portal (data.cms.gov)
 │   marts    │  │  /api/v1/procedures/{code}    │
 │   tests    │  │  /api/v1/hospitals/rankings   │
 └────────────┘  │  /api/v1/analytics/           │
-                └──────────────────────────────┘
-                             │
-                             ▼
-                ┌────────────────────────┐
-                │  Apache Airflow        │
-                │  Weekly orchestration  │
-                │  Quality gates         │
-                └────────────┬───────────┘
-                             │
-                             ▼
-                ┌────────────────────────┐
-                │  Prometheus + Grafana  │
-                │  Pipeline observability│
-                └────────────────────────┘
+                └──────────────┬───────────────┘
+                               │
+                    ┌──────────┴──────────┐
+                    ▼                     ▼
+          ┌──────────────────┐  ┌──────────────────────┐
+          │    Streamlit     │  │   Apache Airflow      │
+          │    Dashboard     │  │   cms_healthflow_     │
+          │    5 pages       │  │   pipeline DAG        │
+          │  localhost:8501  │  │   8 tasks · @weekly   │
+          └──────────────────┘  └──────────┬───────────┘
+                                           │
+                                ┌──────────┴──────────┐
+                                ▼                     ▼
+                      ┌──────────────┐     ┌──────────────────┐
+                      │  Prometheus  │     │     Grafana       │
+                      │   metrics    │     │    Dashboard      │
+                      └──────────────┘     └──────────────────┘
 ```
 
 ---
@@ -80,15 +84,16 @@ CMS Open Data Portal (data.cms.gov)
 |---|---|
 | Data source | CMS Open Data Portal — free, no auth |
 | Big data processing | Apache Spark 3.5 (PySpark) |
-| File format | Parquet + Delta Lake |
+| File format | Parquet (snappy compressed) |
 | Object storage | MinIO (local S3-compatible) |
-| Data warehouse | PostgreSQL 15 (Bronze/Silver/Gold) |
+| Data warehouse | PostgreSQL 15 (Bronze / Silver / Gold) |
 | Transformations | PySpark DataFrame API + dbt |
 | Data quality | Great Expectations 0.18 |
-| API | FastAPI + SQLAlchemy + Pydantic |
+| API | FastAPI + SQLAlchemy 2.0 + Pydantic |
+| Dashboard | Streamlit + Plotly |
 | Orchestration | Apache Airflow 2.9 |
 | Observability | Prometheus + Grafana |
-| Infrastructure | Docker Compose |
+| Infrastructure | Docker Compose — zero local setup |
 
 ---
 
@@ -107,12 +112,11 @@ CMS Open Data Portal (data.cms.gov)
 
 ### Prerequisites
 - Docker Desktop
-- Python 3.11+
 
 ### 1. Clone and configure
 
 ```bash
-git clone <repo>
+git clone https://github.com/jmast02/cms-healthflow
 cd cms-healthflow
 cp .env.example .env
 ```
@@ -123,7 +127,6 @@ cp .env.example .env
 make up
 ```
 
-Services started:
 | Service | URL | Credentials |
 |---|---|---|
 | **Streamlit Dashboard** | http://localhost:8501 | — |
@@ -133,88 +136,66 @@ Services started:
 | Grafana | http://localhost:3000 | admin / admin |
 | Prometheus | http://localhost:9090 | — |
 
-### 3. Download CMS data
+### 3. Run the pipeline
 
-```bash
-make download
-# Downloads cms_provider_2022.csv (~2 GB) to data/raw/provider/
-```
-
-To generate a small synthetic sample for local testing without downloading:
-```bash
-python scripts/generate_sample_data.py
-```
-
-### 4. Run the pipeline
-
-```bash
-make ingest           # upload raw CSV to MinIO
-make spark-normalize  # Bronze → Silver Parquet
-make spark-quality    # quality scoring
-make spark-aggregate  # Silver → Gold aggregations
-make spark-rank       # window function rankings
-make dbt-run          # Gold → PostgreSQL mart tables
-make dbt-test         # validate schema tests
-```
-
-Or run everything at once:
 ```bash
 make pipeline
 ```
 
-### 5. Hit the API
+This runs in Docker — no local Python required. It:
+1. Generates 50k synthetic CMS rows (or use `make download` for the real 2 GB dataset)
+2. Normalizes raw CSV → Silver Parquet (PySpark)
+3. Quality scores each row (0–100)
+4. Aggregates to Gold (provider profiles, procedure costs, geographic rollups)
+5. Computes window function rankings (specialty + state)
+6. Loads Gold Parquet → PostgreSQL
+
+### 4. Open the dashboard
 
 ```bash
-# Search providers in Florida
-curl "http://localhost:8000/api/v1/providers?state=FL&limit=5"
+open http://localhost:8501
+```
 
-# Procedure cost comparison across states
+### 5. Hit the API directly
+
+```bash
+# Search Cardiology providers in Florida
+curl "http://localhost:8000/api/v1/providers?state=FL&specialty=cardiology&limit=5"
+
+# Compare what Medicare pays for a procedure across every state
 curl "http://localhost:8000/api/v1/procedures/99213/costs"
 
-# Top hospitals in Texas
-curl "http://localhost:8000/api/v1/hospitals/rankings?state=TX"
+# Specialty breakdown — which specialties bill the most?
+curl "http://localhost:8000/api/v1/analytics/specialties"
 
-# Geographic cost heatmap data
-curl "http://localhost:8000/api/v1/analytics/cost-by-geography?state=CA"
+# Pipeline health + live provider count
+curl "http://localhost:8000/api/v1/health"
 ```
 
 ---
 
 ## API Reference
 
-Full OpenAPI docs available at **http://localhost:8000/docs**
-
-### Key Endpoints
+Full interactive docs at **http://localhost:8000/docs**
 
 ```
-GET /api/v1/providers
-    ?state=FL&specialty=cardiology&zip_code=33101
-    ?min_payment=100&max_payment=500
-    ?limit=50&offset=0
+GET /api/v1/providers                     Search + filter providers
+GET /api/v1/providers/{npi}               Full provider analytics profile
+GET /api/v1/providers/{npi}/procedures    Procedure cost breakdown for provider's state
+GET /api/v1/providers/state/{state}/top   Top-ranked providers in a state
 
-GET /api/v1/providers/{npi}
-    Full provider analytics profile
+GET /api/v1/procedures/{hcpcs_code}/costs Compare Medicare costs across all states
+GET /api/v1/procedures                    Search procedures by description
 
-GET /api/v1/providers/state/{state}/top
-    Top-ranked providers in a state
+GET /api/v1/hospitals/rankings            Hospital Compare quality rankings
+GET /api/v1/hospitals/{facility_id}       Individual hospital profile
 
-GET /api/v1/procedures/{hcpcs_code}/costs
-    Payment comparison across states for a procedure
+GET /api/v1/analytics/specialties         Payment stats by medical specialty
+GET /api/v1/analytics/state-summary       Provider + payment summary by state
+GET /api/v1/analytics/cost-by-geography   Avg Medicare costs by state + ZIP
 
-GET /api/v1/procedures
-    ?q=office+visit&state=FL
-
-GET /api/v1/hospitals/rankings
-    ?state=TX&metric=avg_payment
-
-GET /api/v1/analytics/cost-by-geography
-    ?state=CA&min_providers=10
-
-GET /api/v1/health
-    Pipeline health and data freshness
-
-GET /metrics
-    Prometheus scrape endpoint
+GET /api/v1/health                        Pipeline health + live provider count
+GET /metrics                              Prometheus scrape endpoint
 ```
 
 ---
@@ -223,8 +204,18 @@ GET /metrics
 
 ```
 cms-healthflow/
+├── streamlit/
+│   ├── app.py                        # Overview: KPIs, choropleth, specialty chart
+│   ├── api_client.py                 # Centralized API calls with caching
+│   └── pages/
+│       ├── 1_provider_search.py      # Provider Explorer
+│       ├── 2_procedure_costs.py      # Procedure Cost Analyzer
+│       ├── 3_specialty_analytics.py  # Specialty Analytics
+│       ├── 4_geographic_analysis.py  # Geographic Heatmap
+│       └── 5_hospital_rankings.py    # Hospital Rankings
+│
 ├── ingestion/
-│   ├── download.py          # Download CMS CSVs (progress bar, skip if cached)
+│   ├── download.py          # Stream-download CMS CSVs with progress bar
 │   ├── ingest.py            # Upload raw files to MinIO
 │   └── validate.py          # Great Expectations validation suite
 │
@@ -234,49 +225,53 @@ cms-healthflow/
 │   │   ├── quality.py       # Silver: 0-100 quality score + outlier flags
 │   │   ├── aggregate.py     # Gold: provider profiles, procedure costs, geo rollups
 │   │   ├── rankings.py      # Gold: window function specialty/state rankings
-│   │   └── hospitals.py     # Gold: hospital quality from Hospital Compare
+│   │   └── hospitals.py     # Gold: Hospital Compare quality processing
 │   └── utils/
 │       ├── schema.py        # CMS column mapping (handles year-to-year renames)
-│       └── session.py       # SparkSession factory (Delta Lake, MinIO/S3A, AQE)
+│       ├── session.py       # SparkSession factory + JDBC JAR auto-download
+│       └── pipeline_log.py  # Writes job metadata to public.pipeline_runs
 │
 ├── dbt/
 │   ├── models/staging/      # stg_providers — clean bronze → silver view
-│   └── models/marts/        # provider_profiles, procedure_costs (Gold tables)
+│   └── models/marts/        # provider_profiles, procedure_costs, geography, hospitals
 │
 ├── api/
-│   ├── main.py              # FastAPI app (Prometheus instrumentation, CORS)
-│   ├── db.py                # SQLAlchemy engine + session dep
+│   ├── main.py              # FastAPI app — Prometheus instrumentation, CORS
+│   ├── db.py                # SQLAlchemy engine + session dependency
 │   ├── routers/             # providers, procedures, hospitals, analytics
 │   ├── models/              # SQLAlchemy ORM → gold.* tables
 │   └── schemas/             # Pydantic request/response validation
 │
 ├── airflow/dags/
-│   └── cms_pipeline.py      # 10-step orchestration DAG (weekly schedule)
+│   └── cms_pipeline.py      # 8-task PythonOperator DAG (weekly schedule)
 │
-├── gx/                      # Great Expectations context
+├── gx/                      # Great Expectations context + expectation suite
 ├── observability/
-│   ├── prometheus/
-│   └── grafana/
+│   ├── prometheus/prometheus.yml
+│   └── grafana/             # Pre-provisioned 9-panel dashboard
 │
 ├── scripts/
-│   ├── generate_sample_data.py   # Synthetic CMS CSV for local dev/testing
-│   └── reset_db.py               # Drop and recreate all schemas
+│   ├── generate_sample_data.py    # 50k synthetic CMS rows for local dev
+│   ├── load_gold_to_postgres.py   # Spark: write Gold Parquet → PostgreSQL
+│   └── reset_db.py                # Drop + recreate all schemas (dry-run safe)
 │
 ├── sql/
-│   ├── 01_init_schemas.sql  # bronze/silver/gold schemas
-│   └── 02_create_tables.sql # all DDL with indexes
+│   ├── 01_init_schemas.sql  # bronze/silver/gold schemas + pipeline_runs table
+│   └── 02_create_tables.sql # DDL with indexes for all gold.* tables
 │
 ├── tests/
-│   ├── conftest.py          # Shared Spark + DB fixtures
+│   ├── conftest.py          # Session-scoped Spark session + shared fixtures
 │   ├── test_spark_jobs.py
 │   ├── test_api_endpoints.py
 │   └── test_data_quality.py
 │
-├── docker-compose.yml
-├── Dockerfile
-├── Makefile                 # make up / download / pipeline / api-dev / test
-├── requirements.txt
-└── pyproject.toml
+├── Dockerfile               # API container — python:3.11-slim
+├── Dockerfile.spark         # Spark jobs — python:3.11-slim + Java + JDBC JAR
+├── Dockerfile.streamlit     # Dashboard — python:3.11-slim
+├── Dockerfile.airflow       # Airflow — apache/airflow:2.9.0 + Java + PySpark
+├── docker-compose.yml       # 8 services + spark job runners (--profile jobs)
+├── Makefile                 # make up / pipeline / dashboard / test
+└── pyproject.toml           # pytest config + project metadata
 ```
 
 ---
@@ -291,9 +286,9 @@ df = df.withColumn("specialty_rank", rank().over(window))
 ```
 
 ### Medallion architecture
-- **Bronze** — raw CMS data, minimal transformation, append-only
-- **Silver** — cleaned, validated, quality-scored
-- **Gold** — aggregated, ranked, analytics-ready; served by FastAPI
+- **Bronze** — raw CMS data, column names normalized, no business logic
+- **Silver** — cleaned, validated, quality-scored (0–100), outlier-flagged
+- **Gold** — aggregated, ranked, analytics-ready; served by FastAPI and Streamlit
 
 ### Schema evolution handling
 CMS renames columns between dataset years. `spark/utils/schema.py` maps all known variants to canonical internal names — adding support for a new year only requires extending `COLUMN_MAPPING`.
@@ -306,57 +301,40 @@ CMS renames columns between dataset years. `spark/utils/schema.py` maps all know
 - Freshness checks (warn after 14 days, error after 30)
 
 ### Incremental-ready design
-Pipeline metadata table (`public.pipeline_runs`) tracks every job's execution — the foundation for incremental processing where only new/updated records are reprocessed.
+`public.pipeline_runs` tracks every job's start time, row count, and status — the foundation for processing only new/updated records on future runs.
 
 ---
 
 ## Running Tests
 
 ```bash
-# Full test suite
-make test
-
-# With coverage
-make test-cov
-
-# Individual modules
-pytest tests/test_spark_jobs.py -v
-pytest tests/test_api_endpoints.py -v
-pytest tests/test_data_quality.py -v
+make test       # Full pytest suite inside Docker
+make test-cov   # With HTML coverage report
 ```
 
-Tests use a local PySpark session (no cluster needed) and mock DB dependencies — no external services required.
+14 tests across Spark jobs, API endpoints, and data quality validation — all passing.
 
 ---
 
 ## Makefile Reference
 
 ```
-make up              Start full Docker stack
-make down            Stop all containers
-make logs            Tail container logs
+make up               Start full Docker stack
+make down             Stop all containers
 
-make download        Download CMS provider dataset (~2 GB)
-make ingest          Upload raw CSV to MinIO
+make generate-sample  Generate 50k synthetic CMS rows (no download needed)
+make download         Download real CMS dataset (~2 GB)
+make pipeline         Full pipeline: sample → normalize → quality → aggregate → rank → load
 
-make spark-normalize Bronze → Silver (normalize + clean)
-make spark-quality   Silver: quality scoring
-make spark-aggregate Silver → Gold (aggregations)
-make spark-rank      Gold: rankings
-make pipeline        Run all Spark jobs in sequence
+make spark-normalize  Bronze → Silver
+make spark-quality    Quality scoring
+make spark-aggregate  Silver → Gold
+make spark-rank       Window function rankings
+make spark-load       Gold Parquet → PostgreSQL
 
-make api-dev         FastAPI dev server with hot-reload
-make dbt-run         Run dbt models
-make dbt-test        Run dbt schema tests
-make gx-run          Run Great Expectations validation
+make dbt-run          Run dbt models
+make dbt-test         Run dbt schema tests
 
-make test            pytest
-make test-cov        pytest + HTML coverage report
-make clean           Remove __pycache__, generated data
+make test             pytest (runs inside Docker)
+make dashboard        Open Streamlit at http://localhost:8501
 ```
-
----
-
-## Resume Bullet
-
-*"Built CMS HealthFlow — a healthcare claims analytics pipeline processing 15M+ Medicare provider records using PySpark for distributed transformation, dbt for data modelling, and Great Expectations for data quality validation. Exposed analytics through a FastAPI REST API enabling provider comparison, procedure cost analysis, and hospital quality rankings across all 50 states. Orchestrated by Apache Airflow with observability via Prometheus and Grafana. Full stack runs via Docker Compose."*

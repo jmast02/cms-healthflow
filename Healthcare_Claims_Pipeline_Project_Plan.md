@@ -453,46 +453,6 @@ make download             # ~2 GB download from data.cms.gov
 
 ---
 
-## Resume Bullet
-
-*"Built CMS HealthFlow — a healthcare claims analytics pipeline processing 15M+ Medicare provider records using PySpark for distributed transformation, dbt for data modeling, and Great Expectations for data quality validation. Exposed analytics through a FastAPI REST API and interactive Streamlit dashboard enabling provider comparison, procedure cost analysis across all 50 states, and hospital quality rankings. Orchestrated by Apache Airflow with full observability via Prometheus and Grafana. Zero local setup — entire stack runs via Docker Compose."*
-
----
-
-## Resume Keywords This Project Adds
-
-- **PySpark / Apache Spark** — distributed data processing, window functions
-- **FastAPI** — async Python REST API, auto-generated OpenAPI docs
-- **Streamlit** — interactive analytics dashboard
-- **Great Expectations** — data quality validation
-- **Parquet / Snappy** — columnar file format
-- **MinIO / S3** — object storage, data lake
-- **Healthcare data / CMS** — compliance-relevant domain knowledge
-- **Medallion architecture** — Bronze / Silver / Gold
-- **JDBC** — Spark-to-PostgreSQL data loading
-
-## Keywords Reinforced
-
-- Apache Airflow, dbt, PostgreSQL, Docker Compose, Prometheus, Grafana, pytest
-
----
-
-## Why This Impresses DE Interviewers
-
-**PySpark is warranted** — 15M rows at full scale is genuinely large enough that Spark makes sense. You're not using a sledgehammer on a nail.
-
-**Healthcare domain** — Healthtech is one of the biggest DE hiring sectors. CMS data signals you understand compliance-sensitive, regulated data environments.
-
-**Great Expectations** — Most candidates don't know this tool. It shows data quality is a first-class concern, not an afterthought.
-
-**Streamlit dashboard** — Most DE portfolio projects stop at the API. A working visual demo that recruiters can actually interact with is rare and memorable.
-
-**Every layer is real** — Not just a Spark job or just an API. Ingestion → Spark → dbt → PostgreSQL → FastAPI → Streamlit → Airflow → Prometheus → Grafana. The full stack.
-
-**Zero local setup** — `docker compose up` + `make pipeline` and it's running. Recruiters can clone it and have it working in 10 minutes.
-
----
-
 ## Data Sources
 
 - **CMS Provider Data**: https://data.cms.gov/provider-summary-by-type-of-service/medicare-physician-other-practitioners/medicare-physician-other-practitioners-by-provider-and-service
