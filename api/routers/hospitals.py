@@ -40,7 +40,7 @@ async def hospital_rankings(
         "national_rank": HospitalRanking.national_rank,
     }[metric]
 
-    stmt = stmt.order_by(order_col.desc_nulls_last()).limit(limit)
+    stmt = stmt.order_by(order_col.desc().nulls_last()).limit(limit)
     return db.execute(stmt).scalars().all()
 
 
